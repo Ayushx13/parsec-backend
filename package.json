@@ -1,0 +1,40 @@
+{
+  "name": "parsec-backend",
+  "version": "1.0.0",
+  "description": "parsec backend ",
+  "homepage": "https://github.com/Ayushx13/parsec-backend#readme",
+  "bugs": {
+    "url": "https://github.com/Ayushx13/parsec-backend/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ayushx13/parsec-backend.git"
+  },
+  "license": "ISC",
+  "author": "Ayush Raj",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "axios": "^1.13.1",
+    "cloudinary": "^2.8.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "express-session": "^1.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.19.2",
+    "morgan": "^1.10.1",
+    "multer": "^2.0.2",
+    "multer-storage-cloudinary": "^4.0.0",
+    "nodemailer": "^7.0.12",
+    "nodemon": "^3.1.10",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0",
+    "qrcode": "^1.5.4"
+  }
+}
