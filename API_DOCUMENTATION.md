@@ -84,48 +84,6 @@
 }
 ```
 
-### 3. Forgot Password
-**POST** `/auth/forgot-password`  
-**Access:** Public
-
-**Request Body:**
-```json
-{
-  "email": "john@example.com"
-}
-```
-
-**Response:**
-```json
-{
-  "status": "success",
-  "message": "Password reset token sent to email"
-}
-```
-
-### 4. Reset Password
-**PATCH** `/auth/reset-password/:token`  
-**Access:** Public
-
-**Request Body:**
-```json
-{
-  "password": "NewSecurePass123",
-  "confirmPassword": "NewSecurePass123"
-}
-```
-
-**Response:**
-```json
-{
-  "status": "success",
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "message": "Password reset successful"
-}
-```
-
----
-
 ## Onboarding Routes
 **Base:** `/onboarding`  
 **Auth Required:** JWT Token
