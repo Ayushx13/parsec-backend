@@ -27,5 +27,4 @@ mongoose.connect(DB).then(async con => {
 
 app.listen(PORT, () => {
     console.log(`🚀 Server is running on port, ${PORT}`);
-    //lataksh gay
 });

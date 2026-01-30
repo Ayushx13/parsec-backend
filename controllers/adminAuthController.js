@@ -12,7 +12,7 @@ export const adminLogin = (req, res, next) => {
     }
 
     if (adminKey !== process.env.ADMIN_SECRET_KEY) {
-        return next(new AppError('Chala ja bsdk yaha se. Chal nikal', 403));
+        return next(new AppError('Invalid Admin Key', 403));
     }
 
     // Generate admin JWT token (expires in 1 hour)

@@ -44,7 +44,7 @@ export const verifyAdminToken = (req, res, next) => {
 //     }
 
 //     if (adminKey !== process.env.ADMIN_SECRET_KEY) {
-//         return next(new AppError('Chala ja bsdk yaha se', 403));
+//         return next(new AppError('Invalid Admin Key', 403));
 //     }
 
 //     req.isAdmin = true;
