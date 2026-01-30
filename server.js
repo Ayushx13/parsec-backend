@@ -2,7 +2,7 @@ import "./config.js";
 import mongoose from 'mongoose';
 import { app } from './app.js';
 import { initializeHouses } from './controllers/sortingHatController.js';
-// import { exportAllCollectionsToCSV } from './exportToCSV.js';
+import { exportAllCollectionsToCSV } from './exportToCSV.js';
 import { startCleanupJob } from './utils/cleanupExpiredBookings.js';
 
 const PORT = process.env.PORT || 3000;
@@ -18,7 +18,7 @@ mongoose.connect(DB).then(async con => {
     console.log('🏰 Houses initialized');
     
     // Export database on server startup
-    // await exportAllCollectionsToCSV();
+    await exportAllCollectionsToCSV();
     
     // Start cleanup job for expired bookings/orders
     startCleanupJob();
