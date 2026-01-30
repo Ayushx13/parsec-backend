@@ -81,6 +81,7 @@ export const createAccommodationBooking = catchAsync(async (req, res, next) => {
         // Create the booking within transaction
         const booking = await AccommodationBooking.create([{
             userId,
+            userName: user.name,
             checkInDate: checkIn,
             checkOutDate: checkOut,
             gender,
@@ -122,5 +123,22 @@ export const createAccommodationBooking = catchAsync(async (req, res, next) => {
         // Pass error to error handler
         return next(error);
     }
+});
+
+
+export const getUserAccommodationBookings = catchAsync(async (req, res, next) => {
+    const userId = req.user.id; // user ID comes from authentication middleware
+
+    // Find all bookings for the user, sorted by check-in date (newest first)
+    const bookings = await AccommodationBooking.find({ userId })
+        .sort({ checkInDate: -1 });
+
+    res.status(200).json({
+        status: 'success',
+        results: bookings.length,
+        data: {
+            bookings
+        }
+    });
 });
 

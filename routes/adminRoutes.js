@@ -4,6 +4,8 @@ import { adminLogin } from '../controllers/adminAuthController.js';
 import { getAllPaymentHistories, verifyPayment, rejectPayment, getAdminStats } from '../controllers/paymentController.js';
 import { addpoints, subtractpoints } from '../controllers/pointsController.js';
 import { addMerch, updateMerchStock, deleteMerch } from '../controllers/merchController.js';
+import { bulkUpdateOrdersWithGender } from '../controllers/orderController.js';
+import { givePass, giveAccommodationCulturalEventPass, getAccommodationBookingEmails } from '../controllers/givePassController.js';
 import accommodationAdminRoutes from './accommodationAdminRoutes.js';
 import qrRoutes from './qrRoutes.js';
 
@@ -81,6 +83,32 @@ router.patch('/merch/:id/stock', updateMerchStock);
 // @desc    Delete merch item by ID (admin only)
 // @access  Private (requires admin token)
 router.delete('/merch/:id', deleteMerch);
+
+// -------------------------------------------- Orders Management Routes -------------------------------------------------//
+
+// @route   PATCH /paneermoms/orders/bulk/update-gender
+// @desc    Bulk update all orders with gender from user data (admin only)
+// @access  Private (requires admin token)
+router.patch('/orders/bulk/update-gender', bulkUpdateOrdersWithGender);
+
+// -------------------------------------------- Free Pass Distribution Routes -------------------------------------------------//
+
+// @route   POST /paneermoms/give-pass
+// @desc    Issue free opening ceremony pass to user (admin only)
+// @access  Private (requires admin token)
+router.post('/give-pass', givePass);
+
+// @route   POST /paneermoms/give-accommodation-pass
+// @desc    Issue complementary accommodation cultural event pass to user (admin only)
+// @access  Private (requires admin token)
+router.post('/give-accommodation-pass', giveAccommodationCulturalEventPass);
+
+// @route   GET /paneermoms/accommodation-booking-emails
+// @desc    Get emails of users with accommodation bookings within a date range (admin only)
+// @access  Private (requires admin token)
+// @query   startDate - Start date in YYYY-MM-DD format
+// @query   endDate - End date in YYYY-MM-DD format
+router.get('/accommodation-booking-emails', getAccommodationBookingEmails);
 
 // -------------------------------------------- Accommodation Availability Management Routes -------------------------------------------------//
 

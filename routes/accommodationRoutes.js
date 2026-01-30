@@ -1,7 +1,10 @@
 import express from 'express';
 import { protect } from '../middleware/auth.js';
 import { requireOnboarding } from '../middleware/OnBoarding.js';
-import { createAccommodationBooking } from '../controllers/accommodationBookingController.js';
+import { 
+    createAccommodationBooking,
+    getUserAccommodationBookings 
+} from '../controllers/accommodationBookingController.js';
 
 const router = express.Router();
 
@@ -13,5 +16,10 @@ router.use(requireOnboarding);
 // @desc    Create accommodation booking 
 // @access  Private (requires JWT + onboarding)
 router.post('/', createAccommodationBooking);
+
+// @route   GET /accommodation
+// @desc    Get all accommodation bookings for current user
+// @access  Private (requires JWT + onboarding)
+router.get('/', getUserAccommodationBookings);
 
 export default router;

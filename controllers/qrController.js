@@ -14,7 +14,7 @@ export const generateEventPassQR = async (qrData) => {
         passPrice: qrData.passPrice,
         collegeName: qrData.collegeName,
         gender: qrData.gender,
-        isUsed: qrData.isUsed
+        // isUsed: qrData.isUsed   // Exclude isUsed from QR data for security
     });
     
     // Generate QR code as buffer
@@ -77,6 +77,45 @@ export const verifyEventPassQR = catchAsync(async (req, res, next) => {
             passType: parsedData.passType,
             collegeName: parsedData.collegeName,
             verifiedAt: qrRecord.usedAt
+        }
+    });
+});
+
+
+// Get QR record and check if used (for frontend QR scan check)
+export const getQR = catchAsync(async (req, res, next) => {
+    const { qrData } = req.body;
+
+    if (!qrData) {
+        return next(new AppError('QR data is required', 400));
+    }
+
+    let parsedData;
+    try {
+        parsedData = JSON.parse(qrData);
+    } catch (error) {
+        return next(new AppError('Invalid QR data format', 400));
+    }
+
+    const qrRecord = await QR.findOne({
+        orderId: parsedData.orderId,
+        passType: parsedData.passType
+    }).populate('userId', 'name email');
+
+    if (!qrRecord) {
+        return next(new AppError('QR record not found', 404));
+    }
+
+    res.status(200).json({
+        status: 'success',
+        data: {
+            attendeeName: parsedData.attendeeName,
+            attendeeEmail: parsedData.attendeeEmail,
+            passType: parsedData.passType,
+            collegeName: parsedData.collegeName,
+            isUsed: qrRecord.isUsed,
+            usedAt: qrRecord.usedAt,
+            user: qrRecord.userId
         }
     });
 });

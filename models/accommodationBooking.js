@@ -9,6 +9,10 @@ const accommodationBookingSchema = new Schema(
             ref: 'User',
             required: [true, 'User ID is required']
         },
+        userName: {
+            type: String,
+            required: true
+        },
         checkInDate: {
             type: Date,
             required: [true, 'Check-in date is required']
@@ -42,17 +46,25 @@ const accommodationBookingSchema = new Schema(
         },
         status: {
             type: String,
-            enum: ['pending', 'confirmed', 'cancelled'],
+            enum: ['pending', 'confirmed', 'Rejected'],
             default: 'pending'
         },
-        paymentStatus: {
+        paymentMade:{
             type: String,
-            enum: ['unpaid', 'paid', 'refunded'],
+            enum:['unpaid' , 'paid'],
             default: 'unpaid'
         },
-        specialRequests: {
+        paymentVerificationStatus: {
             type: String,
-            maxlength: [500, 'Special requests cannot exceed 500 characters']
+            enum: ['unverified', 'Verified', 'rejected'],
+            default: 'unverified'
+        },
+        expiresAt: {
+            type: Date,
+            default: function() {
+                // Set expiry to 5 minutes from now for unpaid bookings
+                return new Date(Date.now() + 5 * 60 * 1000);
+            }
         }
     },
     { timestamps: true }
@@ -62,14 +74,63 @@ const accommodationBookingSchema = new Schema(
 accommodationBookingSchema.index({ userId: 1, checkInDate: 1 });
 accommodationBookingSchema.index({ status: 1 });
 
+
+
 // Calculate number of nights before saving
 accommodationBookingSchema.pre('save', function(next) {
     if (this.checkInDate && this.checkOutDate) {
         const diffTime = Math.abs(this.checkOutDate - this.checkInDate);
         this.numberOfNights = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     }
+    
+    // If payment is made (submitted) or verified, remove expiry (prevent auto-deletion)
+    if (this.paymentMade === 'paid' || this.paymentVerificationStatus === 'Verified' || this.paymentVerificationStatus === 'rejected') {
+        this.expiresAt = null;
+    }
+    // Only 'unpaid' (no payment submitted) bookings will have expiresAt and auto-delete
+    
     next();
 });
+
+
+
+// Middleware to restore availability when booking is deleted (by cron job or manually)
+accommodationBookingSchema.pre('deleteOne', { document: true, query: false }, async function(next) {
+    try {
+        const AccommodationAvail = mongoose.model('AccommodationAvail');
+        
+        // Restore availability only if payment was never made (unpaid bookings)
+        if (this.paymentMade !== 'paid') {
+            const availabilityField = this.gender === 'male' ? 'mensAvailability' : 'womensAvailability';
+            
+            // Generate date array
+            const dateArray = [];
+            let currentDate = new Date(this.checkInDate);
+            const checkOutDate = new Date(this.checkOutDate);
+            
+            while (currentDate < checkOutDate) {
+                dateArray.push(new Date(currentDate));
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+            
+            // Restore availability for each date
+            for (const date of dateArray) {
+                await AccommodationAvail.findOneAndUpdate(
+                    { date },
+                    { $inc: { [availabilityField]: 1 } }
+                );
+            }
+            
+            console.log(`✅ Restored accommodation availability for deleted booking ${this._id}`);
+        }
+        next();
+    } catch (error) {
+        console.error(`❌ Error restoring availability for booking ${this._id}:`, error.message);
+        next(error);
+    }
+});
+
+
 
 const AccommodationBooking = model('AccommodationBooking', accommodationBookingSchema);
 export default AccommodationBooking;

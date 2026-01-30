@@ -95,3 +95,59 @@ export const getOnboardingStatus = catchAsync(async (req, res, next) => {
         }
     });
 });
+
+export const onBoardingUpdate = catchAsync(async (req, res, next) => {
+    const userId = req.user._id;
+    const { college, batch, gender, contactNumber, aadharOrCollegeId, merchSize } = req.body;
+
+    // Check if at least one field is provided
+    if (!college && !batch && !gender && !contactNumber && !aadharOrCollegeId && !merchSize) {
+        return next(new AppError('Please provide at least one field to update', 400));
+    }
+
+    // Validate gender if provided
+    if (gender && !['male', 'female', 'other'].includes(gender)) {
+        return next(new AppError('Invalid gender value. Must be male, female, or other.', 400));
+    }
+
+    // Validate merchSize if provided
+    if (merchSize && !['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'].includes(merchSize.toUpperCase())) {
+        return next(new AppError('Invalid merch size. Must be XS, S, M, L, XL, XXL, or XXXL.', 400));
+    }
+
+    // Find user
+    const user = await User.findById(userId);
+    if (!user) {
+        return next(new AppError('User not found', 404));
+    }
+
+    // Update fields if provided
+    if (college) user.college = college;
+    if (batch) user.batch = batch;
+    if (gender) user.gender = gender;
+    if (contactNumber) user.contactNumber = contactNumber;
+    if (aadharOrCollegeId) user.aadharOrCollegeId = aadharOrCollegeId;
+    if (merchSize) user.merchSize = merchSize.toUpperCase();
+
+    await user.save();
+
+    // Send response
+    res.status(200).json({
+        success: true,
+        message: 'Onboarding information updated successfully',
+        data: {
+            user: {
+                id: user._id,
+                email: user.email,
+                name: user.name,
+                college: user.college,
+                batch: user.batch,
+                gender: user.gender,
+                contactNumber: user.contactNumber,
+                aadharOrCollegeId: user.aadharOrCollegeId,
+                merchSize: user.merchSize
+            }
+        }
+    });
+
+});

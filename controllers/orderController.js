@@ -29,22 +29,75 @@ export const createOrder = catchAsync(async (req, res, next) => {
         let calculatedTotal = 0;
         const processedItems = [];
 
-        // 2️⃣ Loop through each item
+        // 2️⃣ Calculate total event passes already purchased by user
+        const existingOrders = await OrderHistory.find({ 
+            userId: req.user.id,
+            orderStatus: { $ne: 'cancelled' } // Exclude cancelled orders
+        }).session(session);
+
+        let eventPass1Count = 0;
+        let eventPass2Count = 0;
+
+        // Count event passes from existing orders
+        for (const order of existingOrders) {
+            for (const orderItem of order.items) {
+                const existingMerch = await Merch.findById(orderItem.merchId).session(session);
+                if (existingMerch) {
+                    if (existingMerch.type === 'event-pass1') {
+                        eventPass1Count += orderItem.quantity;
+                    } else if (existingMerch.type === 'event-pass2') {
+                        eventPass2Count += orderItem.quantity;
+                    }
+                }
+            }
+        }
+
+        // Count event passes in current order request
+        let newEventPass1Count = 0;
+        let newEventPass2Count = 0;
+
+        for (const item of items) {
+            const merch = await Merch.findById(item.merchId).session(session);
+            if (merch) {
+                if (merch.type === 'event-pass1') {
+                    newEventPass1Count += item.quantity;
+                } else if (merch.type === 'event-pass2') {
+                    newEventPass2Count += item.quantity;
+                }
+            }
+        }
+
+        // Check limits: max 3 event-pass1 and max 2 event-pass2
+        if (eventPass1Count + newEventPass1Count > 3) {
+            throw new AppError(
+                `You can only purchase up to 3 Event Pass-1. You have already purchased ${eventPass1Count}, and you're trying to purchase ${newEventPass1Count} more.`,
+                400
+            );
+        }
+
+        if (eventPass2Count + newEventPass2Count > 2) {
+            throw new AppError(
+                `You can only purchase up to 2 Event Pass-2. You have already purchased ${eventPass2Count}, and you're trying to purchase ${newEventPass2Count} more.`,
+                400
+            );
+        }
+
+        // 3️⃣ Loop through each item
         for (const item of items) {
 
-            // 3️⃣ Validate item structure
+            // 4️⃣ Validate item structure
             if (!item.merchId || !item.quantity) {
                 throw new AppError('Each item must have merchId and quantity.', 400);
             }
 
-            // 4️⃣ Fetch merch details for validation
+            // 5️⃣ Fetch merch details for validation
             const merch = await Merch.findById(item.merchId).session(session);
 
             if (!merch) {
                 throw new AppError(`Merchandise with ID ${item.merchId} not found.`, 404);
             }
 
-            // 5️⃣ Validate size for wearable items (before stock check)
+            // 6️⃣ Validate size for wearable items (before stock check)
             if (merch.type === 'wearable') {
                 if (!item.size) {
                     throw new AppError(`Size is required for wearable item: ${merch.name}`, 400);
@@ -55,7 +108,7 @@ export const createOrder = catchAsync(async (req, res, next) => {
                 }
             }
 
-            // 6️⃣ ATOMIC UPDATE: Check stock availability AND decrement in ONE operation
+            // 7️⃣ ATOMIC UPDATE: Check stock availability AND decrement in ONE operation
             // This prevents race conditions where two users try to buy the last item simultaneously
             const updateResult = await Merch.findOneAndUpdate(
                 { 
@@ -71,7 +124,7 @@ export const createOrder = catchAsync(async (req, res, next) => {
                 }
             );
 
-            // 7️⃣ If updateResult is null, stock was insufficient (another user bought it)
+            // 8️⃣ If updateResult is null, stock was insufficient (another user bought it)
             if (!updateResult) {
                 throw new AppError(
                     `Insufficient stock for ${merch.name}. Available: ${merch.stockQuantity}, Requested: ${item.quantity}`,
@@ -79,7 +132,7 @@ export const createOrder = catchAsync(async (req, res, next) => {
                 );
             }
 
-            // 8️⃣ Prepare order item with verified data
+            // 9️⃣ Prepare order item with verified data
             processedItems.push({
                 merchId: merch._id,
                 name: merch.name,
@@ -91,23 +144,24 @@ export const createOrder = catchAsync(async (req, res, next) => {
             calculatedTotal += merch.price * item.quantity;
         }
 
-        // 9️⃣ Create order inside transaction
+        // 🔟 Create order inside transaction
         const order = await OrderHistory.create(
             [{
                 userId: req.user.id,
                 userName: user.name,
                 items: processedItems,
                 totalAmount: calculatedTotal,
-                shippingAddress
+                shippingAddress,
+                gender: user.gender
             }],
             { session }
         );
 
-        // 🔟 Commit transaction
+        // 1️⃣1️⃣ Commit transaction
         await session.commitTransaction();
         session.endSession();
 
-        // 1️⃣1️⃣ Send response
+        // 1️⃣2️⃣ Send response
         res.status(201).json({
             status: 'success',
             data: {
@@ -135,6 +189,36 @@ export const getOrderByMe = catchAsync(async (req, res, next) => {
         results: orders.length,
         data: {
             orders
+        }
+    });
+});
+
+
+// Admin: Bulk update all orders with gender from user data
+export const bulkUpdateOrdersWithGender = catchAsync(async (req, res, next) => {
+    // Fetch all orders that don't have gender yet
+    const orders = await OrderHistory.find({ gender: null });
+
+    let updatedCount = 0;
+
+    for (const order of orders) {
+        // Fetch user to get gender
+        const user = await User.findById(order.userId);
+
+        if (user && user.gender) {
+            // Update the order with user's gender
+            order.gender = user.gender;
+            await order.save();
+            updatedCount++;
+        }
+    }
+
+    res.status(200).json({
+        status: 'success',
+        message: `Successfully updated ${updatedCount} orders with gender information`,
+        data: {
+            updatedCount,
+            totalOrdersChecked: orders.length
         }
     });
 });

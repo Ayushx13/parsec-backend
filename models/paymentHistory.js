@@ -50,7 +50,7 @@ const paymentHistorySchema = new Schema(
         // Payment screenshot URL from Cloudinary
         paymentScreenshot: {
             type: String,
-            required: false
+            required: [true, 'Payment screenshot is required']
         },
 
         // Payment status for admin verification

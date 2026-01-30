@@ -18,6 +18,10 @@ const qrSchema = new Schema({
         required: true,
         enum: ['event-pass1', 'event-pass2']
     },
+    passNumber: {
+        type: Number,
+        required: true
+    },
     qrCodeData: {
         type: String,
         required: true

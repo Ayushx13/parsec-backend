@@ -2,6 +2,8 @@ import User from "../models/user.js";
 import PaymentHistory from "../models/paymentHistory.js";
 import OrderHistory from "../models/orderHistory.js";
 import AccommodationBooking from "../models/accommodationBooking.js";
+import AccommodationAvail from "../models/accommodation.js";
+import Merch from "../models/merch.js";
 import QR from "../models/qr.js";
 import AppError from "../utils/appError.js";
 import catchAsync from "../utils/catchAsync.js";
@@ -36,12 +38,13 @@ export const recordPayment = catchAsyncWithCleanup(async (req, res, next) => {
         'Booking ID': bookingId 
     });
 
-    // Get payment screenshot URL from uploaded file (if provided)
-    let paymentScreenshot = null;
-    if (req.file) {
-        // Cloudinary URL is stored in req.file.path when using multer-storage-cloudinary
-        paymentScreenshot = req.file.path;
+    // Get payment screenshot URL from uploaded file (required)
+    if (!req.file) {
+        throw new AppError('Payment screenshot is required. Please upload a valid image.', 400);
     }
+    
+    // Cloudinary URL is stored in req.file.path when using multer-storage-cloudinary
+    const paymentScreenshot = req.file.path;
 
     // Get user details from the request 
     const user = await User.findById(req.user.id);
@@ -59,6 +62,10 @@ export const recordPayment = catchAsyncWithCleanup(async (req, res, next) => {
             throw new AppError('Order not found or does not belong to you.', 404);
         }
 
+        // Mark payment as made (middleware will automatically clear expiry)
+        order.paymentMade = 'paid';
+        await order.save();
+
         // Determine the merch type from the order (use first item's type)
         const merchType = order.items[0]?.merchId?.type;
         if (!merchType) {
@@ -74,6 +81,10 @@ export const recordPayment = catchAsyncWithCleanup(async (req, res, next) => {
         if (!booking) {
             throw new AppError('Booking not found or does not belong to you.', 404);
         }
+
+        // Mark payment as made (middleware will automatically clear expiry)
+        booking.paymentMade = 'paid';
+        await booking.save();
 
         referenceType = 'AccommodationBooking';
         referenceId = bookingId;
@@ -181,7 +192,7 @@ export const verifyPayment = catchAsync(async (req, res, next) => {
         // Handle accommodation booking payment
         const booking = await AccommodationBooking.findById(payment.referenceId);
         if (booking) {
-            booking.paymentStatus = 'paid';
+            booking.paymentVerificationStatus = 'Verified';
             booking.status = 'confirmed';
             await booking.save();
         }
@@ -204,50 +215,91 @@ export const verifyPayment = catchAsync(async (req, res, next) => {
             return next(new AppError('Associated order not found.', 404));
         }
 
-        let qrCodeData = null;
+        // Update order verification status (payment already marked as 'paid' when submitted)
+        order.paymentVerificationStatus = 'Verified';
+        order.orderStatus = 'confirmed';
+        await order.save();
 
-        // Create QR record if event-pass is purchased
-        if (payment.referenceType === 'event-pass1' || payment.referenceType === 'event-pass2') {
+        let qrCodesData = null;
+
+        // Check if ANY item in the order is an event pass (regardless of referenceType)
+        const eventPassItems = order.items.filter(item => 
+            item.merchId.type === 'event-pass1' || item.merchId.type === 'event-pass2'
+        );
+
+        console.log('DEBUG - Order items:', JSON.stringify(order.items, null, 2));
+        console.log('DEBUG - Event pass items found:', eventPassItems.length);
+        
+        // Create QR records for all event passes in the order (handle both pass types)
+        if (eventPassItems.length > 0) {
             const user = await User.findById(payment.userId);
-            const eventPassItem = order.items.find(item => 
-                item.merchId.type === payment.referenceType
-            );
-            
-            qrCodeData = {
+            const allQRCodes = [];
+
+            // Process each event pass item
+            for (const eventPassItem of eventPassItems) {
+                const passType = eventPassItem.merchId.type;
+                const quantity = eventPassItem.quantity;
+
+                console.log(`DEBUG - Processing ${passType} with quantity ${quantity}`);
+
+                for (let i = 0; i < quantity; i++) {
+                    const qrCodeData = {
+                        orderId: order._id.toString(),
+                        passNumber: i + 1,
+                        totalPasses: quantity,
+                        attendeeName: user.name,
+                        attendeeEmail: user.email,
+                        passType: passType,
+                        passPrice: eventPassItem.merchId.price || 0,
+                        collegeName: user.college || 'N/A',
+                        gender: user.gender || 'N/A',
+                    };
+
+                    // Generate QR code
+                    const { qrString, qrCodeBuffer } = await generateEventPassQR(qrCodeData);
+
+                    console.log(`DEBUG - Creating QR ${i + 1} of ${quantity} for ${passType}`);
+
+                    // Create QR record in database
+                    await QR.create({
+                        userId: payment.userId,
+                        orderId: order._id,
+                        passType: passType,
+                        passNumber: i + 1,
+                        qrCodeData: qrString
+                    });
+
+                    allQRCodes.push({
+                        passType: passType,
+                        passNumber: i + 1,
+                        totalPasses: quantity,
+                        passPrice: eventPassItem.merchId.price || 0,
+                        qrCodeBuffer
+                    });
+                }
+            }
+
+            console.log(`DEBUG - Total QR codes generated: ${allQRCodes.length}`);
+
+            qrCodesData = {
                 orderId: order._id.toString(),
                 attendeeName: user.name,
                 attendeeEmail: user.email,
-                passType: payment.referenceType,
-                passPrice: eventPassItem?.merchId.price || 0,
-                collegeName: user.collegeName || 'N/A',
+                collegeName: user.college || 'N/A',
                 gender: user.gender || 'N/A',
-                isUsed: false
+                qrCodesList: allQRCodes
             };
-
-            // Generate QR code
-            const { qrString, qrCodeBuffer } = await generateEventPassQR(qrCodeData);
-
-            // Create QR record in database
-            await QR.create({
-                userId: payment.userId,
-                orderId: order._id,
-                passType: payment.referenceType,
-                qrCodeData: qrString
-            });
-
-            qrCodeData.qrCodeBuffer = qrCodeBuffer;
         }
 
         // Send "Payment Verified" email
         const orderIdShort = order._id.toString().slice(-6);
         
-        if (qrCodeData) {
+        if (qrCodesData) {
             await sendEventPassVerifiedEmail(
                 payment.email,
                 orderIdShort,
                 payment.paymentUTR,
-                qrCodeData,
-                qrCodeData.qrCodeBuffer
+                qrCodesData
             );
         } else {
             await sendPaymentVerifiedEmail(
@@ -267,6 +319,8 @@ export const verifyPayment = catchAsync(async (req, res, next) => {
     });
 });
 
+
+
 //reject payment by admin
 export const rejectPayment = catchAsync(async (req, res, next) => {
     const paymentId = req.params.id;            
@@ -278,6 +332,55 @@ export const rejectPayment = catchAsync(async (req, res, next) => {
 
     payment.status = 'rejected';
     await payment.save();
+
+    // Update order/booking paymentVerificationStatus to rejected and restore inventory/availability
+    if (payment.referenceType === 'AccommodationBooking') {
+        const booking = await AccommodationBooking.findById(payment.referenceId);
+        if (booking) {
+            // Restore accommodation availability for all dates in the booking range
+            const availabilityField = booking.gender === 'male' ? 'mensAvailability' : 'womensAvailability';
+            
+            // Generate date array
+            const dateArray = [];
+            let currentDate = new Date(booking.checkInDate);
+            const checkOutDate = new Date(booking.checkOutDate);
+            
+            while (currentDate < checkOutDate) {
+                dateArray.push(new Date(currentDate));
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+            
+            // Restore availability for each date
+            for (const date of dateArray) {
+                await AccommodationAvail.findOneAndUpdate(
+                    { date },
+                    { $inc: { [availabilityField]: 1 } },
+                    { new: true }
+                );
+            }
+            
+            booking.paymentVerificationStatus = 'rejected';
+            booking.status = 'Rejected';
+            await booking.save();
+        }
+    } else {
+        const order = await OrderHistory.findById(payment.referenceId)
+            .populate('items.merchId');
+        if (order) {
+            // Restore inventory for each item in the order
+            for (const item of order.items) {
+                await Merch.findByIdAndUpdate(
+                    item.merchId,
+                    { $inc: { stockQuantity: item.quantity } },
+                    { new: true }
+                );
+            }
+            
+            order.paymentVerificationStatus = 'rejected';
+            order.orderStatus = 'Rejected';
+            await order.save();
+        }
+    }
 
     // Send rejection email based on referenceType
     const idShort = payment.referenceId.toString().slice(-6);
